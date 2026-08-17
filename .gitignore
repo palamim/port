@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+.build/
+.build-arm64/
+.build-x86_64/
+.next/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+.vscode/
