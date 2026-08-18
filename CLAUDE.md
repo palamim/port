@@ -51,7 +51,8 @@ thin shell of stored properties plus `applicationDidFinishLaunching` in
 - `Sources/Port/StatusGlyph.swift` — the per-row asterisk/dot glyph,
   including the "thinking" flicker animation for a working session.
 - `Sources/Port/ThemeToggleColumn.swift` — the 4th, non-scrolling
-  moon/sun toggle column.
+  moon/sun toggle column, plus the quit button sharing the same strip
+  above it.
 - `Sources/Port/Theme.swift` — `PanelTheme`/`ThemeManager` (Port's own
   light/dark toggle, independent of System Settings) plus the bucket
   status-color palette (`Color.working`/`.needsInput`/`.completed` and
