@@ -9,12 +9,14 @@ import SwiftUI
 /// line.
 struct ContentView: View {
     @ObservedObject var poller: AgentPoller
+    @ObservedObject var themeManager: ThemeManager
 
     var body: some View {
         HStack(spacing: 0) {
             ColumnView(title: "Working", sessions: poller.working)
             ColumnView(title: "Needs input", sessions: poller.needsInput)
             ColumnView(title: "Completed", sessions: poller.completed)
+            ThemeToggleColumn(themeManager: themeManager)
         }
         .background(Color.black.opacity(0.001))  // keeps the whole area hit-testable for scroll
     }
@@ -67,7 +69,10 @@ private struct ColumnView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .strokeBorder((glow ?? .white).opacity(glow == nil ? 0.05 : 0.25), lineWidth: 1)
+                // `.primary` rather than a fixed `.white` for the glow-less
+                // case so the border stays visible against a light theme's
+                // bright background, not just a dark one.
+                .strokeBorder(glow?.opacity(0.25) ?? Color.primary.opacity(0.08), lineWidth: 1)
         )
         .shadow(color: (glow ?? .clear).opacity(glow == nil ? 0 : 0.55), radius: 5)
         .padding(.vertical, 2)
@@ -144,6 +149,48 @@ private struct StatusGlyph: View {
         case .completed: return .completed
         case nil: return .secondary
         }
+    }
+}
+
+/// The 4th, non-scrolling container: a vertical thumb-slider, thin enough
+/// that it reads as chrome rather than a fourth data column. Thumb at the
+/// top for light (sun rises), bottom for dark (night sinks low) — no label
+/// needed, the position alone says which mode is active.
+private struct ThemeToggleColumn: View {
+    @ObservedObject var themeManager: ThemeManager
+
+    private let trackWidth: CGFloat = 14
+    private let trackHeight: CGFloat = 36
+    private let thumbDiameter: CGFloat = 12
+    private let thumbInset: CGFloat = 2
+
+    var body: some View {
+        VStack {
+            Spacer()
+            Button {
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                    themeManager.toggle()
+                }
+            } label: {
+                ZStack(alignment: themeManager.theme == .light ? .top : .bottom) {
+                    RoundedRectangle(cornerRadius: trackWidth / 2, style: .continuous)
+                        .fill(Color.primary.opacity(0.1))
+                        .frame(width: trackWidth, height: trackHeight)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: trackWidth / 2, style: .continuous)
+                                .strokeBorder(Color.primary.opacity(0.15), lineWidth: 1)
+                        )
+                    Circle()
+                        .fill(Color.primary.opacity(0.85))
+                        .frame(width: thumbDiameter, height: thumbDiameter)
+                        .padding(thumbInset)
+                }
+            }
+            .buttonStyle(.plain)
+            .help(themeManager.theme == .dark ? "Switch to light theme" : "Switch to dark theme")
+            Spacer()
+        }
+        .frame(width: 20)
     }
 }
 

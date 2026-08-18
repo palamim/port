@@ -1,14 +1,22 @@
 import Cocoa
+import Combine
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: NSPanel!
     private let poller = AgentPoller()
+    private let themeManager = ThemeManager()
+    private var themeSubscription: AnyCancellable?
     private var dockTrackingTimer: Timer!
+
+    /// Kept so `applyTheme` can restyle them after the initial build —
+    /// `NSVisualEffectView.appearance`/its sublayers aren't reachable any
+    /// other way once `applicationDidFinishLaunching` returns.
+    private var effectView: NSVisualEffectView!
+    private var tintView: NSView!
 
     private let panelWidth: CGFloat = 360
     private let cornerRadius: CGFloat = 12
-    private let panelTintColor = NSColor(calibratedRed: 0.02, green: 0.035, blue: 0.06, alpha: 0.65)
     /// Same cadence Starboard settled on for its own once-a-second full
     /// evaluation. Starboard also runs a 60ms fast path while the Dock is
     /// auto-hiding, to catch a reveal within ~100ms instead of up to 1s;
@@ -64,21 +72,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         effectView.layer?.cornerRadius = cornerRadius
         effectView.layer?.masksToBounds = true
         effectView.layer?.borderWidth = 1
-        effectView.layer?.borderColor = NSColor.white.withAlphaComponent(0.2).cgColor
+        self.effectView = effectView
 
         let tintView = NSView(frame: effectView.bounds)
         tintView.autoresizingMask = [.width, .height]
         tintView.wantsLayer = true
-        tintView.layer?.backgroundColor = panelTintColor.cgColor
         effectView.addSubview(tintView)
+        self.tintView = tintView
 
-        let hosting = NSHostingView(rootView: ContentView(poller: poller))
+        let hosting = NSHostingView(rootView: ContentView(poller: poller, themeManager: themeManager))
         hosting.frame = effectView.bounds
         hosting.autoresizingMask = [.width, .height]
         effectView.addSubview(hosting)
 
         panel.contentView = effectView
         self.panel = panel
+
+        // `@Published`'s sink fires immediately with the current value, so
+        // this alone also does the initial styling — no separate call needed.
+        themeSubscription = themeManager.$theme.sink { [weak self] theme in
+            self?.applyTheme(theme)
+        }
 
         panel.orderFrontRegardless()
         Self.debugLog("initialFrame=\(initialFrame) isVisible=\(panel.isVisible)")
@@ -91,6 +105,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSApplication.didChangeScreenParametersNotification,
             object: nil
         )
+    }
+
+    /// Restyles the Cocoa-level chrome (tint, forced appearance, border) for
+    /// `theme`. The SwiftUI side (`ContentView`'s `.primary`/`.secondary`
+    /// colors and the toggle itself) updates on its own from the same
+    /// `ThemeManager` via `@ObservedObject` — this only covers what SwiftUI
+    /// can't reach: the `NSVisualEffectView` and its tint overlay.
+    private func applyTheme(_ theme: PanelTheme) {
+        tintView.layer?.backgroundColor = theme.panelTint.cgColor
+        effectView.layer?.borderColor = theme.borderColor.cgColor
+        effectView.appearance = theme.appearance
     }
 
     /// `fallbackScreen` is used only as the last-resort reference for
