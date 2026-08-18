@@ -11,7 +11,7 @@ struct ContentView: View {
     @ObservedObject var poller: AgentPoller
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 0) {
             ColumnView(title: "Working", sessions: poller.working)
             ColumnView(title: "Needs input", sessions: poller.needsInput)
             ColumnView(title: "Completed", sessions: poller.completed)
@@ -70,7 +70,7 @@ private struct ColumnView: View {
                 .strokeBorder((glow ?? .white).opacity(glow == nil ? 0.05 : 0.25), lineWidth: 1)
         )
         .shadow(color: (glow ?? .clear).opacity(glow == nil ? 0 : 0.55), radius: 5)
-        .padding(2)
+        .padding(.vertical, 2)
     }
 }
 
