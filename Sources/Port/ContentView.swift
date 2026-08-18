@@ -11,7 +11,7 @@ struct ContentView: View {
     @ObservedObject var poller: AgentPoller
 
     var body: some View {
-        HStack(spacing: 1) {
+        HStack(spacing: 4) {
             ColumnView(title: "Working", sessions: poller.working)
             ColumnView(title: "Needs input", sessions: poller.needsInput)
             ColumnView(title: "Completed", sessions: poller.completed)
@@ -23,6 +23,18 @@ struct ContentView: View {
 private struct ColumnView: View {
     let title: String
     let sessions: [AgentSession]
+
+    /// Pastel glow for a column that has something to show off — amber for
+    /// a session waiting on the user, mint for one that finished. Working
+    /// never glows: it's the expected steady state, not a thing to flag.
+    private var glow: Color? {
+        guard !sessions.isEmpty else { return nil }
+        switch title {
+        case "Needs input": return .needsInputGlow
+        case "Completed": return .completedGlow
+        default: return nil
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -49,6 +61,16 @@ private struct ColumnView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill((glow ?? .clear).opacity(glow == nil ? 0 : 0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .strokeBorder((glow ?? .white).opacity(glow == nil ? 0.05 : 0.25), lineWidth: 1)
+        )
+        .shadow(color: (glow ?? .clear).opacity(glow == nil ? 0 : 0.55), radius: 5)
+        .padding(2)
     }
 }
 
@@ -70,26 +92,49 @@ private struct SessionRow: View {
     }
 }
 
-/// Green dot for completed, yellow for needs-input, an animated pulsing dot
-/// while working. `bucket` is nil only for undocumented states this app
-/// deliberately doesn't render (see `AgentSession.bucket`), so `SessionRow`
-/// never actually reaches that case in practice.
+/// A bold asterisk per row, colored by bucket. A working session cycles
+/// through bold asterisk → plain asterisk → dot → back to bold asterisk —
+/// a little "thinking" flicker instead of a static mark, so the eye can
+/// tell "in progress" apart from "waiting"/"done" at a glance without
+/// reading the column header. `bucket` is nil only for undocumented states
+/// this app deliberately doesn't render (see `AgentSession.bucket`), so
+/// `SessionRow` never actually reaches that case in practice.
 private struct StatusGlyph: View {
     let bucket: AgentSession.Bucket?
-    @State private var isPulsing = false
+
+    private static let frameInterval: TimeInterval = 0.5
 
     var body: some View {
-        Circle()
-            .fill(color)
-            .frame(width: 6, height: 6)
-            .scaleEffect(bucket == .working && isPulsing ? 1.5 : 1.0)
-            .opacity(bucket == .working && isPulsing ? 0.4 : 1.0)
-            .animation(
-                bucket == .working
-                    ? .easeInOut(duration: 0.9).repeatForever(autoreverses: true) : .default,
-                value: isPulsing
-            )
-            .onAppear { isPulsing = true }
+        Group {
+            if bucket == .working {
+                TimelineView(.periodic(from: .now, by: Self.frameInterval)) { context in
+                    let phase =
+                        Int(context.date.timeIntervalSinceReferenceDate / Self.frameInterval) % 3
+                    glyph(phase: phase)
+                }
+            } else {
+                glyph(phase: 0)
+            }
+        }
+    }
+
+    private func glyph(phase: Int) -> some View {
+        Text(symbol(phase: phase))
+            .font(.system(size: 11, weight: weight(phase: phase), design: .rounded))
+            .foregroundColor(color)
+            .frame(width: 8, alignment: .center)
+    }
+
+    /// Phase 0: bold `*`. Phase 1: regular-weight `*`. Phase 2: `.` — then
+    /// back to phase 0.
+    private func symbol(phase: Int) -> String {
+        guard bucket == .working else { return "*" }
+        return phase == 2 ? "." : "*"
+    }
+
+    private func weight(phase: Int) -> Font.Weight {
+        guard bucket == .working else { return .bold }
+        return phase == 0 ? .bold : .regular
     }
 
     private var color: Color {
@@ -106,4 +151,10 @@ extension Color {
     static let working = Color(red: 0.35, green: 0.68, blue: 0.98)
     static let needsInput = Color(red: 0.95, green: 0.75, blue: 0.25)
     static let completed = Color(red: 0.35, green: 0.78, blue: 0.45)
+
+    /// Softer, lower-saturation variants used only for the column glow —
+    /// the dot colors above read fine at 6pt but are too saturated for a
+    /// background wash across a whole column.
+    static let needsInputGlow = Color(red: 1.0, green: 0.91, blue: 0.62)
+    static let completedGlow = Color(red: 0.68, green: 0.94, blue: 0.76)
 }
