@@ -11,6 +11,8 @@ input**, **Completed**.
 
 v1 is read-only: display only, no clicking, no focusing terminals, no actions.
 
+![Port showing live Claude Code agent session state in three columns](assets/port.gif)
+
 ## Download
 
 ### Homebrew
