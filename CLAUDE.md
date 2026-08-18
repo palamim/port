@@ -13,17 +13,18 @@ Info.plist. File-per-concern:
   `.accessory` activation policy before `app.run()` (no Dock icon, no
   Cmd+Tab entry).
 - `Sources/Port/AppDelegate.swift` — builds the borderless `NSPanel`,
-  hosts `ContentView` via `NSHostingView`, requests Accessibility
-  permission, drives the 1s Dock-tracking timer.
-- `Sources/Port/DockTracking.swift` — reads the Dock's live on-screen
-  tray geometry via the Accessibility API (`AXUIElement`), same
-  technique as Starboard's `dockIconTrayFrame` but trimmed of Starboard's
-  hold/freeze state machine and auto-hide dual-cadence path — Port's
-  panel never becomes key and isn't flush against the Dock's icons, so
-  neither is needed. Anchored bottom-left (mirror of Starboard's
-  bottom-right), same height as the Dock, live-tracked at a flat 1s.
-  Falls back to the screen's Dock-reserved-strip height when
-  Accessibility permission isn't granted.
+  hosts `ContentView` via `NSHostingView`, drives the 1s Dock-tracking
+  timer.
+- `Sources/Port/DockTracking.swift` — sizes the panel off the strip
+  macOS reserves for the Dock (`NSScreen.visibleFrame`) and which screen
+  hosts the Dock (from the Dock's own window bounds via
+  `CGWindowListCopyWindowInfo`) — both public, no-permission APIs.
+  Deliberately does *not* read the Dock's exact icon-tray rect the way
+  Starboard's `dockIconTrayFrame` does (which needs Accessibility
+  permission): that rect only matters for a panel sitting flush against
+  the Dock's icons, which Port, anchored bottom-left (mirror of
+  Starboard's bottom-right) at a fixed width, never is — see "No
+  Accessibility permission" below. Live-tracked at a flat 1s.
 - `Sources/Port/ContentView.swift` — SwiftUI, three scrollable columns
   (Working / Needs input / Completed), single-line rows (the panel is
   Dock-height, not full-screen — there's rarely room for more than a
@@ -61,10 +62,38 @@ form — don't simplify it without re-reading both:
    same `PATH` without zsh ever entering interactive mode, so it never
    touches terminal job control.
 
-Set `PORT_DEBUG=1` in the environment to log the resolved panel frame,
-Accessibility-trust state, and bucketed session names to stderr on every
-poll/retrack — added specifically because both bugs above were silent
-without it.
+Set `PORT_DEBUG=1` in the environment to log the resolved panel frame and
+bucketed session names to stderr on every poll/retrack — added
+specifically because both bugs above were silent without it.
+
+## No Accessibility permission
+
+Port requests no permissions at all — confirmed by removing the one
+Accessibility read it used to make (`DockTracker.dockIconTrayFrame`, an
+`AXUIElement` read of the Dock's icon-tray rect) and finding nothing else
+depended on it. That rect was only ever used for two things, both
+now gone from `DockTracking.swift`:
+
+- A ±5pt correction on top of the Dock's reserved-strip height
+  (`dockTopCorrection`/`dockBottomCorrection`), compensating for the
+  AXList bounding box overshooting the Dock's actual painted chrome.
+  `NSScreen.visibleFrame`'s reserved strip (still used, permission-free)
+  is within that same margin of the true value on its own.
+- Nothing else — Port never used the tray rect's *x*/width the way
+  Starboard's `gluedFrame` does (`x = host.frame.maxX - width`, derived
+  from `tray.maxX`, to sit flush against the Dock's icons without
+  overlapping them). Port's panel width and x-position
+  (`host.frame.minX`) are constants unrelated to the Dock's icon layout
+  in both the old AX-read path and the current permission-free one, so
+  removing the AX path changed nothing about horizontal placement.
+
+Net effect of dropping it: Port never shows a permission prompt, at the
+cost of the panel's height sometimes landing a few pixels off the Dock's
+exact painted edge instead of matching it pixel-for-pixel — acceptable
+for a v1 that's explicitly display-only. This is a real difference from
+Starboard, where the equivalent AX read is load-bearing (needed for
+horizontal layout, not just refinement) and can't be dropped the same
+way — see Starboard's own `CLAUDE.md`.
 
 ## Data gaps handled deliberately, not silently
 
@@ -78,3 +107,51 @@ without it.
   (`"stopped"` has been observed, for a background job killed before
   finishing) is excluded from all three columns rather than guessed at —
   see `AgentSession.bucket`.
+
+## Distribution
+
+Started as a close mirror of Starboard's setup (sibling project, same
+author), but diverges on signing: Starboard's `install.sh` needs a
+local, self-signed certificate to give its `launchd`-launched instance a
+stable TCC identity for Accessibility permission across rebuilds (ad-hoc
+signing pins trust to the binary's content hash, which changes every
+rebuild). Port requests no permission at all (see "No Accessibility
+permission" above), so that entire certificate dance has nothing to
+stabilize — `scripts/install.sh` ad-hoc signs, same as `scripts/
+package.sh`, and there's no equivalent of Starboard's `tccutil reset`
+step anywhere in Port's scripts or cask. Other differences from
+Starboard: no third-party dependency (`scripts/package.sh` still does
+two single-arch `swift build` + `lipo` rather than one multi-arch
+invocation, purely because `--arch arm64 --arch x86_64` together hands
+the universal-binary step to xcbuild, which needs a full Xcode install —
+run concurrently, not sequentially, since the two builds share no
+state), and no app icon yet — `package.sh`/`install.sh` both skip
+`CFBundleIconFile` and the icon copy when `assets/AppIcon.icns` doesn't
+exist, so packaging doesn't fail without one.
+
+- `scripts/_bundle.sh` — sourced (not run directly) by both `package.sh`
+  and `install.sh`: writes the icon (if present) and `Info.plist` for a
+  `Port.app` bundle, so the two build paths can't drift into producing
+  different bundle metadata the way they once did.
+- `scripts/package.sh` — builds the universal release `.app`, ad-hoc signs
+  it (`codesign --sign -`), zips it with `ditto` (preserves the signature's
+  extended attributes; plain `zip` can drop them). What `.github/workflows/
+  release.yml` runs on a `v*.*.*` tag push, and what a manual/Homebrew
+  download runs too. Builds into `.build/release-dist/`, never
+  `.build/release/` — that path is also where `install.sh`'s LaunchAgent
+  points, so running `package.sh` against it would clobber whatever
+  `install.sh` last built there.
+- `scripts/install.sh` — for build-from-source use: packages a `.app` at
+  `.build/release/Port.app`, ad-hoc signs it, and registers it as a
+  `~/Library/LaunchAgents/com.port.app.plist` LaunchAgent.
+- `Casks/port.rb` makes this repo a self-hosted Homebrew tap (`brew tap
+  palamim/port https://github.com/palamim/port`) rather than a submission
+  to the official `homebrew/cask` repo, which now requires notarized
+  casks — Port is ad-hoc signed only. `.github/workflows/release.yml`
+  rewrites the cask's `version`/`sha256` and pushes straight to `main` on
+  every release tag, computing the checksum from the `Port.zip` already
+  sitting in the runner's workspace (not the GitHub Releases API, whose
+  asset digests aren't guaranteed ready yet) and skipping the commit
+  entirely if the cask is already at that version. `checkout` uses
+  `fetch-depth: 0` in that job specifically because a tag build's default
+  shallow clone doesn't have `main`'s history to push onto.

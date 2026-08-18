@@ -1,4 +1,3 @@
-import ApplicationServices
 import Cocoa
 import SwiftUI
 
@@ -21,7 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Mirrors `AgentPoller`'s `PORT_DEBUG` gate — set it and run via
     /// `swift run` (or Console.app for a Login-Items launch) to see the
-    /// panel's frame and Accessibility-trust state on every retrack.
+    /// panel's frame on every retrack.
     private static let debugEnabled = ProcessInfo.processInfo.environment["PORT_DEBUG"] == "1"
 
     private static func debugLog(_ message: @autoclosure () -> String) {
@@ -30,16 +29,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Triggers the system Accessibility permission prompt on first
-        // launch if not already granted. Needed to read the Dock's exact
-        // icon-tray geometry; without it `DockTracker` still sizes the
-        // panel off the height macOS reserves for the Dock (readable with
-        // no permission at all — see `DockGeometry.fallback`), just without
-        // pixel-perfect baseline matching.
-        let promptOptions =
-            [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
-        AXIsProcessTrustedWithOptions(promptOptions)
-
         let initialScreen = DockTracker.mainDisplayScreen() ?? NSScreen.screens.first
         let initialFrame =
             initialScreen.map { currentFrame(on: $0) }
@@ -92,7 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.panel = panel
 
         panel.orderFrontRegardless()
-        Self.debugLog("initialFrame=\(initialFrame) isVisible=\(panel.isVisible) axTrusted=\(AXIsProcessTrusted())")
+        Self.debugLog("initialFrame=\(initialFrame) isVisible=\(panel.isVisible)")
         poller.start()
         startDockTracking()
 
@@ -104,12 +93,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
-    /// Dock-glued geometry (see `DockTracker`) on the given screen, used
-    /// only as the last-resort reference for picking a host display —
-    /// `DockTracker` itself resolves the Dock's actual host independently.
+    /// `fallbackScreen` is used only as the last-resort reference for
+    /// picking a host display — `DockTracker` itself resolves the Dock's
+    /// actual host independently.
     private func currentFrame(on fallbackScreen: NSScreen) -> NSRect {
-        let geometry = DockTracker.resolveGeometry(fallbackScreen: fallbackScreen)
-        return DockTracker.panelFrame(for: geometry, width: panelWidth)
+        DockTracker.panelFrame(width: panelWidth, fallbackScreen: fallbackScreen)
     }
 
     private func startDockTracking() {
