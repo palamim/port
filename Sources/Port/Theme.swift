@@ -1,5 +1,6 @@
 import Cocoa
 import Combine
+import SwiftUI
 
 /// Port's own light/dark toggle for the panel's translucent chrome —
 /// independent of System Settings' appearance, since the panel is meant to
@@ -53,4 +54,16 @@ final class ThemeManager: ObservableObject {
     func toggle() {
         theme = (theme == .dark) ? .light : .dark
     }
+}
+
+extension Color {
+    static let working = Color(red: 0.35, green: 0.68, blue: 0.98)
+    static let needsInput = Color(red: 0.95, green: 0.75, blue: 0.25)
+    static let completed = Color(red: 0.35, green: 0.78, blue: 0.45)
+
+    /// Softer, lower-saturation variants used only for the column glow —
+    /// the dot colors above read fine at 6pt but are too saturated for a
+    /// background wash across a whole column.
+    static let needsInputGlow = Color(red: 1.0, green: 0.91, blue: 0.62)
+    static let completedGlow = Color(red: 0.68, green: 0.94, blue: 0.76)
 }

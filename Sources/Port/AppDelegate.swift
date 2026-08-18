@@ -3,20 +3,20 @@ import Combine
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var panel: NSPanel!
-    private let poller = AgentPoller()
-    private let themeManager = ThemeManager()
-    private var themeSubscription: AnyCancellable?
-    private var dockTrackingTimer: Timer!
+    var panel: NSPanel!
+    let poller = AgentPoller()
+    let themeManager = ThemeManager()
+    var themeSubscription: AnyCancellable?
+    var dockTrackingTimer: Timer!
 
     /// Kept so `applyTheme` can restyle them after the initial build —
     /// `NSVisualEffectView.appearance`/its sublayers aren't reachable any
     /// other way once `applicationDidFinishLaunching` returns.
-    private var effectView: NSVisualEffectView!
-    private var tintView: NSView!
+    var effectView: NSVisualEffectView!
+    var tintView: NSView!
 
-    private let panelWidth: CGFloat = 360
-    private let cornerRadius: CGFloat = 12
+    let panelWidth: CGFloat = 360
+    let cornerRadius: CGFloat = 12
     /// Same cadence Starboard settled on for its own once-a-second full
     /// evaluation. Starboard also runs a 60ms fast path while the Dock is
     /// auto-hiding, to catch a reveal within ~100ms instead of up to 1s;
@@ -24,17 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// against the Dock's icons, so shaving reveal latency down doesn't earn
     /// back the extra always-on polling the way it does for a panel someone
     /// is actively about to type into.
-    private let dockTrackingInterval: TimeInterval = 1.0
-
-    /// Mirrors `AgentPoller`'s `PORT_DEBUG` gate — set it and run via
-    /// `swift run` (or Console.app for a Login-Items launch) to see the
-    /// panel's frame on every retrack.
-    private static let debugEnabled = ProcessInfo.processInfo.environment["PORT_DEBUG"] == "1"
-
-    private static func debugLog(_ message: @autoclosure () -> String) {
-        guard debugEnabled else { return }
-        FileHandle.standardError.write("[port.debug] \(message())\n".data(using: .utf8)!)
-    }
+    let dockTrackingInterval: TimeInterval = 1.0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let initialScreen = DockTracker.mainDisplayScreen() ?? NSScreen.screens.first
@@ -95,7 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         panel.orderFrontRegardless()
-        Self.debugLog("initialFrame=\(initialFrame) isVisible=\(panel.isVisible)")
+        PortDebug.log("initialFrame=\(initialFrame) isVisible=\(panel.isVisible)")
         poller.start()
         startDockTracking()
 
@@ -105,44 +95,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSApplication.didChangeScreenParametersNotification,
             object: nil
         )
-    }
-
-    /// Restyles the Cocoa-level chrome (tint, forced appearance, border) for
-    /// `theme`. The SwiftUI side (`ContentView`'s `.primary`/`.secondary`
-    /// colors and the toggle itself) updates on its own from the same
-    /// `ThemeManager` via `@ObservedObject` — this only covers what SwiftUI
-    /// can't reach: the `NSVisualEffectView` and its tint overlay.
-    private func applyTheme(_ theme: PanelTheme) {
-        tintView.layer?.backgroundColor = theme.panelTint.cgColor
-        effectView.layer?.borderColor = theme.borderColor.cgColor
-        effectView.appearance = theme.appearance
-    }
-
-    /// `fallbackScreen` is used only as the last-resort reference for
-    /// picking a host display — `DockTracker` itself resolves the Dock's
-    /// actual host independently.
-    private func currentFrame(on fallbackScreen: NSScreen) -> NSRect {
-        DockTracker.panelFrame(width: panelWidth, fallbackScreen: fallbackScreen)
-    }
-
-    private func startDockTracking() {
-        let timer = Timer(timeInterval: dockTrackingInterval, repeats: true) { [weak self] _ in
-            self?.retrack()
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        dockTrackingTimer = timer
-    }
-
-    private func retrack() {
-        let screen = DockTracker.mainDisplayScreen() ?? NSScreen.screens.first ?? panel.screen
-        guard let screen else { return }
-        let frame = currentFrame(on: screen)
-        Self.debugLog("retrack frame=\(frame)")
-        guard panel.frame != frame else { return }
-        panel.setFrame(frame, display: true)
-    }
-
-    @objc private func screenParametersChanged(_ notification: Notification) {
-        retrack()
     }
 }

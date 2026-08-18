@@ -9,12 +9,27 @@ clicking, no focusing terminals, no actions.
 Plain SPM executable, no third-party dependencies, no Xcode project, no
 Info.plist. File-per-concern:
 
+Following Starboard's own split: a single executable target, kept
+navigable by pulling each distinct concern into its own file rather than
+by carving out separate SPM modules. `AppDelegate` in particular stays a
+thin shell of stored properties plus `applicationDidFinishLaunching` in
+`AppDelegate.swift` itself, with everything else about it in
+`AppDelegate+*.swift` extensions — mirrors Starboard's
+`AppDelegate+Theme.swift`/`AppDelegate+Tracking.swift`/etc.
+
 - `Sources/Port/main.swift` — creates `NSApplication`, sets
   `.accessory` activation policy before `app.run()` (no Dock icon, no
   Cmd+Tab entry).
-- `Sources/Port/AppDelegate.swift` — builds the borderless `NSPanel`,
-  hosts `ContentView` via `NSHostingView`, drives the 1s Dock-tracking
-  timer.
+- `Sources/Port/AppDelegate.swift` — stored properties plus
+  `applicationDidFinishLaunching`: builds the borderless `NSPanel`, hosts
+  `ContentView` via `NSHostingView`, kicks off the poller and Dock
+  tracking.
+- `Sources/Port/AppDelegate+Theme.swift` — `applyTheme`, the Cocoa-level
+  chrome restyle (tint, forced appearance, border) that SwiftUI's own
+  `.primary`/`.secondary` colors can't reach.
+- `Sources/Port/AppDelegate+Tracking.swift` — the 1s Dock-tracking timer
+  and `retrack`/`screenParametersChanged`, both driving off
+  `DockTracking.swift`'s frame calculation.
 - `Sources/Port/DockTracking.swift` — sizes the panel off the strip
   macOS reserves for the Dock (`NSScreen.visibleFrame`) and which screen
   hosts the Dock (from the Dock's own window bounds via
@@ -24,16 +39,38 @@ Info.plist. File-per-concern:
   permission): that rect only matters for a panel sitting flush against
   the Dock's icons, which Port, anchored bottom-left (mirror of
   Starboard's bottom-right) at a fixed width, never is — see "No
-  Accessibility permission" below. Live-tracked at a flat 1s.
-- `Sources/Port/ContentView.swift` — SwiftUI, three scrollable columns
-  (Working / Needs input / Completed), single-line rows (the panel is
-  Dock-height, not full-screen — there's rarely room for more than a
-  header and a couple of rows before a column needs to scroll).
+  Accessibility permission" below.
+- `Sources/Port/ContentView.swift` — top-level SwiftUI container: lays
+  out the three scrollable columns (Working / Needs input / Completed)
+  plus the theme toggle.
+- `Sources/Port/ColumnView.swift` — one scrollable column and its
+  single-line row (the panel is Dock-height, not full-screen — there's
+  rarely room for more than a header and a couple of rows before a
+  column needs to scroll; project/detail move into the row's tooltip
+  instead of a second line).
+- `Sources/Port/StatusGlyph.swift` — the per-row asterisk/dot glyph,
+  including the "thinking" flicker animation for a working session.
+- `Sources/Port/ThemeToggleColumn.swift` — the 4th, non-scrolling
+  moon/sun toggle column.
+- `Sources/Port/Theme.swift` — `PanelTheme`/`ThemeManager` (Port's own
+  light/dark toggle, independent of System Settings) plus the bucket
+  status-color palette (`Color.working`/`.needsInput`/`.completed` and
+  their glow variants) — grouped here since both are "what color is
+  this" concerns.
 - `Sources/Port/AgentSession.swift` — `Codable` model for one row of
   `claude agents --json --all`'s output, plus the Working/Needs
   input/Completed bucketing logic.
-- `Sources/Port/AgentPoller.swift` — polls `claude agents --json --all`
-  on a 1.5s timer, decodes, buckets, republishes as `@Published` arrays.
+- `Sources/Port/AgentPoller.swift` — polls `ClaudeCLI` on a 1.5s timer,
+  buckets the result, republishes as `@Published` arrays.
+- `Sources/Port/ClaudeCLI.swift` — the `claude agents --json --all`
+  process launch and JSON decode, isolated from `AgentPoller`'s
+  timer/bucketing because invoking the CLI correctly is its own fragile
+  concern — see the polling mechanism section below.
+- `Sources/Port/PortDebug.swift` — the shared `PORT_DEBUG` gate, used by
+  both `AppDelegate` (panel frames) and `AgentPoller`/`ClaudeCLI`
+  (poll/decode path) — a free enum rather than an `AppDelegate`-scoped
+  extension (Starboard's pattern) since two independent types need it
+  here.
 
 ## The `claude agents --json --all` polling mechanism
 
