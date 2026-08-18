@@ -12,11 +12,13 @@ struct ContentView: View {
     @ObservedObject var themeManager: ThemeManager
 
     var body: some View {
-        HStack(spacing: 0) {
-            ColumnView(title: "Working", sessions: poller.working)
-            ColumnView(title: "Needs input", sessions: poller.needsInput)
-            ColumnView(title: "Completed", sessions: poller.completed)
-            ThemeToggleColumn(themeManager: themeManager)
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                ColumnView(title: "Working", sessions: poller.working)
+                ColumnView(title: "Needs input", sessions: poller.needsInput)
+                ColumnView(title: "Completed", sessions: poller.completed)
+            }
+            ThemeToggleBar(themeManager: themeManager)
         }
         .background(Color.black.opacity(0.001))  // keeps the whole area hit-testable for scroll
     }
@@ -152,45 +154,47 @@ private struct StatusGlyph: View {
     }
 }
 
-/// The 4th, non-scrolling container: a vertical thumb-slider, thin enough
-/// that it reads as chrome rather than a fourth data column. Thumb at the
-/// top for light (sun rises), bottom for dark (night sinks low) — no label
-/// needed, the position alone says which mode is active.
-private struct ThemeToggleColumn: View {
+/// A thin strip below the three columns rather than a 4th column beside
+/// them — keeps the columns at full width instead of splitting it four
+/// ways for a control that isn't session data. Moon over a hairline divider
+/// over sun; whichever mode is active stays solid, the other fades, so the
+/// pair alone communicates state without a track/thumb metaphor.
+private struct ThemeToggleBar: View {
     @ObservedObject var themeManager: ThemeManager
 
-    private let trackWidth: CGFloat = 14
-    private let trackHeight: CGFloat = 36
-    private let thumbDiameter: CGFloat = 12
-    private let thumbInset: CGFloat = 2
+    private let dimOpacity: Double = 0.25
 
     var body: some View {
-        VStack {
+        HStack {
             Spacer()
             Button {
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                withAnimation(.easeInOut(duration: 0.2)) {
                     themeManager.toggle()
                 }
             } label: {
-                ZStack(alignment: themeManager.theme == .light ? .top : .bottom) {
-                    RoundedRectangle(cornerRadius: trackWidth / 2, style: .continuous)
-                        .fill(Color.primary.opacity(0.1))
-                        .frame(width: trackWidth, height: trackHeight)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: trackWidth / 2, style: .continuous)
-                                .strokeBorder(Color.primary.opacity(0.15), lineWidth: 1)
-                        )
-                    Circle()
-                        .fill(Color.primary.opacity(0.85))
-                        .frame(width: thumbDiameter, height: thumbDiameter)
-                        .padding(thumbInset)
+                // Centered, not trailing-aligned: the panel's rounded corner
+                // clips anything butted against the bottom-right edge.
+                VStack(spacing: 3) {
+                    Image(systemName: "moon.fill")
+                        .font(.system(size: 8))
+                        .foregroundColor(.primary)
+                        .opacity(themeManager.theme == .dark ? 1 : dimOpacity)
+                    Rectangle()
+                        .fill(Color.primary.opacity(0.2))
+                        .frame(width: 13, height: 1)
+                    Image(systemName: "sun.max.fill")
+                        .font(.system(size: 8))
+                        .foregroundColor(.primary)
+                        .opacity(themeManager.theme == .light ? 1 : dimOpacity)
                 }
+                .padding(.vertical, 3)
+                .padding(.horizontal, 7)
             }
             .buttonStyle(.plain)
             .help(themeManager.theme == .dark ? "Switch to light theme" : "Switch to dark theme")
             Spacer()
         }
-        .frame(width: 20)
+        .frame(height: 22)
     }
 }
 
