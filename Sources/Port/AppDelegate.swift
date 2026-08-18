@@ -1,31 +1,60 @@
+import ApplicationServices
 import Cocoa
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: NSPanel!
     private let poller = AgentPoller()
+    private var dockTrackingTimer: Timer!
 
-    private let panelWidth: CGFloat = 300
-    /// Fraction of the screen's visible height the panel occupies — "full
-    /// or majority screen height" per spec; a hair short of 100% reads as
-    /// intentional margin rather than a panel that's clipping.
-    private let heightFraction: CGFloat = 0.96
+    private let panelWidth: CGFloat = 360
     private let cornerRadius: CGFloat = 12
     private let panelTintColor = NSColor(calibratedRed: 0.02, green: 0.035, blue: 0.06, alpha: 0.65)
+    /// Same cadence Starboard settled on for its own once-a-second full
+    /// evaluation. Starboard also runs a 60ms fast path while the Dock is
+    /// auto-hiding, to catch a reveal within ~100ms instead of up to 1s;
+    /// skipped here — Port's panel never becomes key and isn't glued flush
+    /// against the Dock's icons, so shaving reveal latency down doesn't earn
+    /// back the extra always-on polling the way it does for a panel someone
+    /// is actively about to type into.
+    private let dockTrackingInterval: TimeInterval = 1.0
+
+    /// Mirrors `AgentPoller`'s `PORT_DEBUG` gate — set it and run via
+    /// `swift run` (or Console.app for a Login-Items launch) to see the
+    /// panel's frame and Accessibility-trust state on every retrack.
+    private static let debugEnabled = ProcessInfo.processInfo.environment["PORT_DEBUG"] == "1"
+
+    private static func debugLog(_ message: @autoclosure () -> String) {
+        guard debugEnabled else { return }
+        FileHandle.standardError.write("[port.debug] \(message())\n".data(using: .utf8)!)
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let screen = mainDisplayScreen() ?? NSScreen.screens.first
-        let frame = leftEdgeFrame(on: screen)
+        // Triggers the system Accessibility permission prompt on first
+        // launch if not already granted. Needed to read the Dock's exact
+        // icon-tray geometry; without it `DockTracker` still sizes the
+        // panel off the height macOS reserves for the Dock (readable with
+        // no permission at all — see `DockGeometry.fallback`), just without
+        // pixel-perfect baseline matching.
+        let promptOptions =
+            [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+        AXIsProcessTrustedWithOptions(promptOptions)
+
+        let initialScreen = DockTracker.mainDisplayScreen() ?? NSScreen.screens.first
+        let initialFrame =
+            initialScreen.map { currentFrame(on: $0) }
+            ?? NSRect(x: 0, y: 0, width: panelWidth, height: DockTracker.fallbackHeight)
 
         let panel = NSPanel(
-            contentRect: frame,
+            contentRect: initialFrame,
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
-        // No Dock to clear here (unlike Starboard, which sits beside it) —
-        // `.statusBar` just needs to reliably stay above normal app
-        // windows and full-screen spaces, which it does.
+        // No Dock to clear on this side of the screen (unlike Starboard,
+        // which sits immediately beside the Dock's own icons) — `.statusBar`
+        // just needs to reliably stay above normal app windows and
+        // full-screen spaces, which it does.
         panel.level = .statusBar
         panel.isOpaque = false
         panel.backgroundColor = .clear
@@ -37,7 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.hidesOnDeactivate = false
         panel.ignoresMouseEvents = false
 
-        let effectView = NSVisualEffectView(frame: NSRect(origin: .zero, size: frame.size))
+        let effectView = NSVisualEffectView(frame: NSRect(origin: .zero, size: initialFrame.size))
         effectView.autoresizingMask = [.width, .height]
         effectView.material = .menu
         effectView.blendingMode = .behindWindow
@@ -63,7 +92,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.panel = panel
 
         panel.orderFrontRegardless()
+        Self.debugLog("initialFrame=\(initialFrame) isVisible=\(panel.isVisible) axTrusted=\(AXIsProcessTrusted())")
         poller.start()
+        startDockTracking()
 
         NotificationCenter.default.addObserver(
             self,
@@ -73,33 +104,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
-    /// Left screen edge, `heightFraction` of the visible height, vertically
-    /// centered within it. `visibleFrame` already excludes the menu bar and
-    /// (regardless of orientation) whatever strip the Dock reserves, so a
-    /// left-side Dock is avoided automatically with no Dock-tracking code —
-    /// unlike Starboard, this frame is computed once and stays fixed.
-    private func leftEdgeFrame(on screen: NSScreen?) -> NSRect {
-        guard let screen else {
-            return NSRect(x: 0, y: 0, width: panelWidth, height: 600)
-        }
-        let visible = screen.visibleFrame
-        let height = visible.height * heightFraction
-        let y = visible.minY + (visible.height - height) / 2
-        return NSRect(x: visible.minX, y: y, width: panelWidth, height: height)
+    /// Dock-glued geometry (see `DockTracker`) on the given screen, used
+    /// only as the last-resort reference for picking a host display —
+    /// `DockTracker` itself resolves the Dock's actual host independently.
+    private func currentFrame(on fallbackScreen: NSScreen) -> NSRect {
+        let geometry = DockTracker.resolveGeometry(fallbackScreen: fallbackScreen)
+        return DockTracker.panelFrame(for: geometry, width: panelWidth)
     }
 
-    /// The display hosting the menu bar, via `CGMainDisplayID()` rather than
-    /// `NSScreen.main` (which tracks keyboard focus) — a fixed, pinned panel
-    /// shouldn't jump screens as the user works across multiple displays.
-    private func mainDisplayScreen() -> NSScreen? {
-        NSScreen.screens.first {
-            ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?
-                .uint32Value == CGMainDisplayID()
+    private func startDockTracking() {
+        let timer = Timer(timeInterval: dockTrackingInterval, repeats: true) { [weak self] _ in
+            self?.retrack()
         }
+        RunLoop.main.add(timer, forMode: .common)
+        dockTrackingTimer = timer
+    }
+
+    private func retrack() {
+        let screen = DockTracker.mainDisplayScreen() ?? NSScreen.screens.first ?? panel.screen
+        guard let screen else { return }
+        let frame = currentFrame(on: screen)
+        Self.debugLog("retrack frame=\(frame)")
+        guard panel.frame != frame else { return }
+        panel.setFrame(frame, display: true)
     }
 
     @objc private func screenParametersChanged(_ notification: Notification) {
-        let screen = mainDisplayScreen() ?? NSScreen.screens.first
-        panel.setFrame(leftEdgeFrame(on: screen), display: true)
+        retrack()
     }
 }

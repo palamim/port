@@ -2,17 +2,19 @@ import SwiftUI
 
 /// Three independently-scrollable columns — Working, Needs input, Completed —
 /// styled after Claude Code's own terminal agent view: a status glyph plus a
-/// short task description per row.
+/// short task description per row. Rows are single-line: the panel is
+/// Dock-height (see `DockTracker`), not full-screen, so there's rarely room
+/// for more than a header and a couple of rows before a column needs to
+/// scroll — project/detail move into the row's tooltip instead of a second
+/// line.
 struct ContentView: View {
     @ObservedObject var poller: AgentPoller
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 1) {
-                ColumnView(title: "Working", tint: .working, sessions: poller.working)
-                ColumnView(title: "Needs input", tint: .needsInput, sessions: poller.needsInput)
-                ColumnView(title: "Completed", tint: .completed, sessions: poller.completed)
-            }
+        HStack(spacing: 1) {
+            ColumnView(title: "Working", sessions: poller.working)
+            ColumnView(title: "Needs input", sessions: poller.needsInput)
+            ColumnView(title: "Completed", sessions: poller.completed)
         }
         .background(Color.black.opacity(0.001))  // keeps the whole area hit-testable for scroll
     }
@@ -20,29 +22,29 @@ struct ContentView: View {
 
 private struct ColumnView: View {
     let title: String
-    let tint: Color
     let sessions: [AgentSession]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(title.uppercased())
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 9, weight: .semibold))
                 .foregroundColor(.secondary)
-                .tracking(0.5)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
+                .tracking(0.3)
+                .lineLimit(1)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
 
             if sessions.isEmpty {
                 Spacer()
             } else {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 2) {
+                    LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(sessions) { session in
                             SessionRow(session: session)
                         }
                     }
-                    .padding(.horizontal, 6)
-                    .padding(.bottom, 8)
+                    .padding(.horizontal, 4)
+                    .padding(.bottom, 4)
                 }
             }
         }
@@ -54,30 +56,16 @@ private struct SessionRow: View {
     let session: AgentSession
 
     var body: some View {
-        HStack(alignment: .top, spacing: 6) {
+        HStack(alignment: .center, spacing: 4) {
             StatusGlyph(bucket: session.bucket)
-                .padding(.top, 3)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(session.name)
-                    .font(.system(size: 12))
-                    .foregroundColor(.primary)
-                    .lineLimit(2)
-                Text(session.projectName)
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-                if let detail = session.detail {
-                    Text(detail)
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary.opacity(0.8))
-                        .lineLimit(1)
-                }
-            }
-            Spacer(minLength: 0)
+            Text(session.name)
+                .font(.system(size: 10))
+                .foregroundColor(.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
         }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 3)
+        .padding(.vertical, 2)
         .help("\(session.name) — \(session.projectName)\(session.detail.map { " (\($0))" } ?? "")")
     }
 }
@@ -93,7 +81,7 @@ private struct StatusGlyph: View {
     var body: some View {
         Circle()
             .fill(color)
-            .frame(width: 7, height: 7)
+            .frame(width: 6, height: 6)
             .scaleEffect(bucket == .working && isPulsing ? 1.5 : 1.0)
             .opacity(bucket == .working && isPulsing ? 0.4 : 1.0)
             .animation(

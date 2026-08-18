@@ -21,13 +21,31 @@ final class AgentPoller: ObservableObject {
     /// immediately on launch.
     private let completedRetentionWindow: TimeInterval = 24 * 60 * 60
 
-    /// Runs via `/bin/zsh -lc`, not a direct `Process` launch of `claude`:
-    /// this app has no Dock icon and isn't launched from a shell, so its
-    /// own environment's `PATH` is whatever launchd gives a GUI app, which
-    /// typically doesn't include `~/.local/bin` (where `claude` lives here).
-    /// A login shell picks up the same `PATH` the user's own terminal
-    /// would, from their `.zprofile`/`.zshrc`.
+    /// Runs via `/bin/zsh -ilc`, not a direct `Process` launch of `claude`:
+    /// this app has no Dock icon and isn't launched from a shell, so its own
+    /// `PATH` is whatever launchd gives a GUI app, which doesn't include
+    /// `~/.local/bin` (where `claude` lives on this machine). `-l` (login)
+    /// alone isn't enough to fix that — `~/.local/bin` is added to `PATH`
+    /// from `~/.zshrc`, which is only sourced by an *interactive* shell, and
+    /// `-c` on its own is non-interactive even combined with `-l`. Verified
+    /// empirically: `zsh -lc "which claude"` fails against a GUI-launched
+    /// process's stripped-down environment, `zsh -ilc "which claude"`
+    /// succeeds. `-i` also means an interactive shell's stray stdout (job
+    /// control notices etc.) could in principle land on the pipe, but none
+    /// has been observed in practice, and `claude`'s JSON is still the last
+    /// thing written, so a decode failure here would be visible rather than
+    /// silently corrupt.
     private static let command = "claude agents --json --all"
+
+    /// Gate for diagnosing the Process/decode path — set `PORT_DEBUG=1` in
+    /// the environment and run via `swift run` (or Console.app for a
+    /// Login-Items launch) to see it. Mirrors Starboard's `STARBOARD_DEBUG`.
+    private static let debugEnabled = ProcessInfo.processInfo.environment["PORT_DEBUG"] == "1"
+
+    private static func debugLog(_ message: @autoclosure () -> String) {
+        guard debugEnabled else { return }
+        FileHandle.standardError.write("[port.debug] \(message())\n".data(using: .utf8)!)
+    }
 
     func start() {
         poll()
@@ -75,27 +93,42 @@ final class AgentPoller: ObservableObject {
         self.working = working
         self.needsInput = needsInput
         self.completed = completed
+        Self.debugLog("working=\(working.map(\.name)) needsInput=\(needsInput.map(\.name)) completed=\(completed.map(\.name))")
     }
 
     private static func fetchSessions() -> [AgentSession]? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        process.arguments = ["-lc", command]
+        process.arguments = ["-ilc", command]
 
         let stdout = Pipe()
+        let stderr = Pipe()
         process.standardOutput = stdout
-        process.standardError = Pipe()
+        process.standardError = stderr
 
         do {
             try process.run()
         } catch {
+            debugLog("Process.run() failed: \(error)")
             return nil
         }
 
         let data = stdout.fileHandleForReading.readDataToEndOfFile()
+        let errData = stderr.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
-        guard process.terminationStatus == 0 else { return nil }
+        guard process.terminationStatus == 0 else {
+            debugLog(
+                "exit \(process.terminationStatus), stderr: "
+                    + (String(data: errData, encoding: .utf8) ?? "<undecodable>"))
+            return nil
+        }
 
-        return try? JSONDecoder().decode([AgentSession].self, from: data)
+        do {
+            return try JSONDecoder().decode([AgentSession].self, from: data)
+        } catch {
+            debugLog("decode failed: \(error)")
+            debugLog("raw stdout (\(data.count) bytes): \(String(data: data, encoding: .utf8) ?? "<undecodable>")")
+            return nil
+        }
     }
 }
