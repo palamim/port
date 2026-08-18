@@ -12,13 +12,11 @@ struct ContentView: View {
     @ObservedObject var themeManager: ThemeManager
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                ColumnView(title: "Working", sessions: poller.working)
-                ColumnView(title: "Needs input", sessions: poller.needsInput)
-                ColumnView(title: "Completed", sessions: poller.completed)
-            }
-            ThemeToggleBar(themeManager: themeManager)
+        HStack(spacing: 0) {
+            ColumnView(title: "Working", sessions: poller.working)
+            ColumnView(title: "Needs input", sessions: poller.needsInput)
+            ColumnView(title: "Completed", sessions: poller.completed)
+            ThemeToggleColumn(themeManager: themeManager)
         }
         .background(Color.black.opacity(0.001))  // keeps the whole area hit-testable for scroll
     }
@@ -154,47 +152,43 @@ private struct StatusGlyph: View {
     }
 }
 
-/// A thin strip below the three columns rather than a 4th column beside
-/// them — keeps the columns at full width instead of splitting it four
-/// ways for a control that isn't session data. Moon over a hairline divider
-/// over sun; whichever mode is active stays solid, the other fades, so the
-/// pair alone communicates state without a track/thumb metaphor.
-private struct ThemeToggleBar: View {
+/// The 4th, non-scrolling container: thin enough that it reads as chrome
+/// rather than a fourth data column. Moon over a hairline divider over sun,
+/// top to bottom; whichever mode is active stays solid, the other fades, so
+/// the pair alone communicates state without a track/thumb metaphor.
+private struct ThemeToggleColumn: View {
     @ObservedObject var themeManager: ThemeManager
 
     private let dimOpacity: Double = 0.25
 
     var body: some View {
-        HStack {
+        VStack {
             Spacer()
             Button {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     themeManager.toggle()
                 }
             } label: {
-                // Centered, not trailing-aligned: the panel's rounded corner
-                // clips anything butted against the bottom-right edge.
-                VStack(spacing: 3) {
+                VStack(spacing: 4) {
                     Image(systemName: "moon.fill")
                         .font(.system(size: 8))
                         .foregroundColor(.primary)
                         .opacity(themeManager.theme == .dark ? 1 : dimOpacity)
                     Rectangle()
                         .fill(Color.primary.opacity(0.2))
-                        .frame(width: 13, height: 1)
+                        .frame(width: 11, height: 1)
                     Image(systemName: "sun.max.fill")
                         .font(.system(size: 8))
                         .foregroundColor(.primary)
                         .opacity(themeManager.theme == .light ? 1 : dimOpacity)
                 }
-                .padding(.vertical, 3)
-                .padding(.horizontal, 7)
+                .padding(6)
             }
             .buttonStyle(.plain)
             .help(themeManager.theme == .dark ? "Switch to light theme" : "Switch to dark theme")
             Spacer()
         }
-        .frame(height: 22)
+        .frame(width: 20)
     }
 }
 
