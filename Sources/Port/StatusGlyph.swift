@@ -1,12 +1,13 @@
 import SwiftUI
 
 /// A bold asterisk per row, colored by bucket. A working session cycles
-/// through bold asterisk → plain asterisk → dot → back to bold asterisk —
-/// a little "thinking" flicker instead of a static mark, so the eye can
-/// tell "in progress" apart from "waiting"/"done" at a glance without
-/// reading the column header. `bucket` is nil only for undocumented states
-/// this app deliberately doesn't render (see `AgentSession.bucket`), so
-/// `SessionRow` never actually reaches that case in practice.
+/// through dot → asterisk → bold asterisk → asterisk → back to dot — a
+/// "breathing" flicker (small → big → small) instead of a static mark, so
+/// the eye can tell "in progress" apart from "waiting"/"done" at a glance
+/// without reading the column header. `bucket` is nil only for
+/// undocumented states this app deliberately doesn't render (see
+/// `AgentSession.bucket`), so `SessionRow` never actually reaches that case
+/// in practice.
 struct StatusGlyph: View {
     let bucket: AgentSession.Bucket?
 
@@ -17,7 +18,7 @@ struct StatusGlyph: View {
             if bucket == .working {
                 TimelineView(.periodic(from: .now, by: Self.frameInterval)) { context in
                     let phase =
-                        Int(context.date.timeIntervalSinceReferenceDate / Self.frameInterval) % 3
+                        Int(context.date.timeIntervalSinceReferenceDate / Self.frameInterval) % 4
                     glyph(phase: phase)
                 }
             } else {
@@ -31,18 +32,29 @@ struct StatusGlyph: View {
             .font(.system(size: 11, weight: weight(phase: phase), design: .rounded))
             .foregroundColor(color)
             .frame(width: 8, alignment: .center)
+            .offset(y: verticalOffset(phase: phase))
     }
 
-    /// Phase 0: bold `*`. Phase 1: regular-weight `*`. Phase 2: `.` — then
-    /// back to phase 0.
+    /// Phase 0: `.`. Phases 1 and 3: regular-weight `*`. Phase 2: bold
+    /// `*` — the peak of the breath — then back to phase 0.
     private func symbol(phase: Int) -> String {
         guard bucket == .working else { return "*" }
-        return phase == 2 ? "." : "*"
+        return phase == 0 ? "." : "*"
     }
 
     private func weight(phase: Int) -> Font.Weight {
         guard bucket == .working else { return .bold }
-        return phase == 0 ? .bold : .regular
+        return phase == 2 ? .bold : .regular
+    }
+
+    /// Neither symbol's ink sits at the row's visual center by default:
+    /// `*` renders up near cap height (level with a `t`'s crossbar, per
+    /// pixel measurements against the row's own text), and `.` sits even
+    /// lower, hugging the baseline. Centering the *frame* doesn't fix
+    /// either — both need their ink nudged onto the x-height center that
+    /// the adjacent row text reads as "the middle of the line".
+    private func verticalOffset(phase: Int) -> CGFloat {
+        symbol(phase: phase) == "." ? -2.5 : 2.75
     }
 
     private var color: Color {
