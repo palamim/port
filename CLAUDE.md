@@ -50,6 +50,16 @@ thin shell of stored properties plus `applicationDidFinishLaunching` in
   instead of a second line).
 - `Sources/Port/StatusGlyph.swift` — the per-row asterisk/dot glyph,
   including the "thinking" flicker animation for a working session.
+- `Sources/Port/Mascot.swift` — Port's pixel-art mascot: a yellow variant
+  of agent-patterns' `mascot.tsx` (Starboard ported the same character to
+  AppKit as `MascotView.swift`; this is a third port, to SwiftUI, drawn
+  with `Canvas` on the same 16x13 grid). Carries over that mascot's
+  leg-cycle walk, blink, and wandering-gaze animations, plus its own
+  divergences — bent antenna, default gaze top-left instead of
+  bottom-right, a mouth/vent slit, a pixel-wider leg stance — so it reads
+  as kin to the other two, not a copy. Not wired into `ContentView` yet;
+  today its only consumer is the app-icon build (its `animated: false`
+  static frame — see "Distribution" below).
 - `Sources/Port/ThemeToggleColumn.swift` — the 4th, non-scrolling
   moon/sun toggle column, plus the quit button sharing the same strip
   above it.
@@ -163,9 +173,20 @@ two single-arch `swift build` + `lipo` rather than one multi-arch
 invocation, purely because `--arch arm64 --arch x86_64` together hands
 the universal-binary step to xcbuild, which needs a full Xcode install —
 run concurrently, not sequentially, since the two builds share no
-state), and no app icon yet — `package.sh`/`install.sh` both skip
-`CFBundleIconFile` and the icon copy when `assets/AppIcon.icns` doesn't
-exist, so packaging doesn't fail without one.
+state). `package.sh`/`install.sh` skip `CFBundleIconFile` and the icon
+copy only when `assets/AppIcon.icns` is absent — it isn't: see the app
+icon note below.
+
+`assets/AppIcon.png`/`.icns` — `Mascot.swift`'s static frame centered on
+a rounded-square navy card with a soft radial glow, yellow to match the
+mascot instead of Starboard's green. Same recipe as Starboard's own icon:
+a one-off Python/Pillow script (supersample at 2048px, `numpy`-computed
+diagonal gradient + radial glow, `iconutil` to pack the `.iconset` into
+an `.icns`) that isn't checked into either repo — Starboard's only
+survives in that project's Claude Code session history, not in a file,
+which is where this one was recovered from. Regenerate by rewriting that
+script from this description (or from the recovered one) rather than
+hunting for it on disk if the mascot or card colors ever change.
 
 - `scripts/_bundle.sh` — sourced (not run directly) by both `package.sh`
   and `install.sh`: writes the icon (if present) and `Info.plist` for a
