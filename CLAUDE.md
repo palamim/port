@@ -55,7 +55,7 @@ thin shell of stored properties plus `applicationDidFinishLaunching` in
   AppKit as `MascotView.swift`; this is a third port, to SwiftUI, drawn
   with `Canvas` on the same 16x13 grid). Carries over that mascot's
   leg-cycle walk, blink, and wandering-gaze animations, plus its own
-  divergences — bent antenna, default gaze top-left instead of
+  divergences — bent antenna, default gaze bottom-left instead of
   bottom-right, a mouth/vent slit, a pixel-wider leg stance — so it reads
   as kin to the other two, not a copy. Not wired into `ContentView` yet;
   today its only consumer is the app-icon build (its `animated: false`

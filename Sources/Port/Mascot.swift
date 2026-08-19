@@ -4,7 +4,7 @@ import SwiftUI
 /// (and Starboard's AppKit port of it, `MascotView.swift`) — same 16x13
 /// grid, same walk/blink/look mechanics — but not a copy: recolored yellow,
 /// a bent antenna instead of a straight stem, a default gaze to the
-/// top-left instead of bottom-right, a vent/mouth slit neither original
+/// bottom-left instead of bottom-right, a vent/mouth slit neither original
 /// has, and a pixel-wider leg stance. Colors are deliberately hardcoded,
 /// not var(--token)-style theme colors: the mascot is a fixed-identity
 /// character, not a themed diagram — it should look identical in light and
@@ -39,7 +39,7 @@ struct Mascot: View {
     private static let legInterval: TimeInterval = 0.34
 
     @State private var blinking = false
-    @State private var look: Look = .topLeft
+    @State private var look: Look = .bottomLeft
     @State private var blinkTask: Task<Void, Never>?
     @State private var lookTask: Task<Void, Never>?
 
