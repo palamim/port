@@ -188,6 +188,14 @@ which is where this one was recovered from. Regenerate by rewriting that
 script from this description (or from the recovered one) rather than
 hunting for it on disk if the mascot or card colors ever change.
 
+The card itself is inset with a ~9.2% transparent margin on every side
+(card content is ~81% of the 1024 canvas width, centered) — macOS does
+not add this margin for you, and without it the icon reads as oversized
+next to every other app in the Dock/Finder/Launchpad. Ratio measured off
+Starboard's own shipped `AppIcon.png` (alpha bbox inset 97px on a 1024
+canvas, i.e. ~9.47%; Port's version lands a hair tighter at ~9.2%, a
+LANCZOS-resize rounding artifact, not a deliberate difference).
+
 - `scripts/_bundle.sh` — sourced (not run directly) by both `package.sh`
   and `install.sh`: writes the icon (if present) and `Info.plist` for a
   `Port.app` bundle, so the two build paths can't drift into producing
