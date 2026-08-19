@@ -9,9 +9,11 @@ write_port_bundle() {
     local app_path="$1" label="$2" repo_dir="$3"
     local icon_path="$repo_dir/assets/AppIcon.icns"
 
-    # No app icon yet -- CFBundleIconFile is omitted when this is absent,
-    # so the .app just gets the generic executable icon instead of
-    # failing to package.
+    # assets/AppIcon.icns is the mascot on a glowing card (see CLAUDE.md's
+    # "Distribution" section for how it's built). CFBundleIconFile is
+    # omitted when it's absent so packaging still succeeds -- the .app
+    # just falls back to the generic executable icon -- rather than this
+    # failing outright.
     local icon_key=""
     if [ -f "$icon_path" ]; then
         cp "$icon_path" "$app_path/Contents/Resources/AppIcon.icns"
