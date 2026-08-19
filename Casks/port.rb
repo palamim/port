@@ -1,8 +1,8 @@
 cask "port" do
-  version "0.5.0"
+  version "0.5.1"
   # Placeholder -- .github/workflows/release.yml overwrites this with the
   # real digest of Port.zip on every tagged release.
-  sha256 "6a7f116c748af9c92db479679e7d1550a3c4b57746cd21508364d4025daeb266"
+  sha256 "d094bb0efdc34176e8e6b40102e3cf9a6cbdd772a786755c1a89b0fb299faee7"
 
   url "https://github.com/palamim/port/releases/download/v#{version}/Port.zip"
   name "Port"
