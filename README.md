@@ -1,3 +1,5 @@
+<img src="assets/AppIcon.png" width="96" height="96" alt="Port icon" />
+
 # Port
 
 [![Latest release](https://img.shields.io/github/v/release/palamim/port)](https://github.com/palamim/port/releases/latest)
